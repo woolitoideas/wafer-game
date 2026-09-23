@@ -3,50 +3,51 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>優先表</title>
+<title>優先表（雲端）</title>
 <style>
-  :root { color-scheme: light dark; --bg: #0f1115; --card: #1a1e27; --text: #eef1f6; --muted: #9aa3b2; --accent: #6ea8fe; --border: #2a3140; }
+  :root { color-scheme: light dark; --bg:#0f1115; --card:#1a1e27; --text:#eef1f6; --muted:#9aa3b2; --accent:#6ea8fe; --border:#2a3140; --ok:#3ecf8e; }
   @media (prefers-color-scheme: light) {
-    :root { --bg: #f4f6fa; --card: #fff; --text: #1b1f2a; --muted: #667085; --accent: #2563eb; --border: #e4e7ec; }
+    :root { --bg:#f4f6fa; --card:#fff; --text:#1b1f2a; --muted:#667085; --accent:#2563eb; --border:#e4e7ec; --ok:#059669; }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Noto Sans TC", "PingFang TC", sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
-  main { max-width: 560px; margin: 0 auto; padding: 24px 16px 48px; }
-  h1 { font-size: 1.25rem; margin: 0 0 4px; }
-  p.hint { color: var(--muted); font-size: 0.9rem; margin: 0 0 20px; line-height: 1.5; }
-  ol#list { list-style: none; padding: 0; margin: 0 0 16px; display: flex; flex-direction: column; gap: 8px; counter-reset: item; }
-  li.item { counter-increment: item; display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; cursor: grab; user-select: none; touch-action: none; }
-  li.item:active { cursor: grabbing; }
-  li.item.dragging { opacity: 0.55; }
-  li.item.over { outline: 2px solid var(--accent); }
-  li.item::before { content: counter(item); width: 1.5rem; height: 1.5rem; border-radius: 999px; background: var(--border); display: grid; place-items: center; font-size: 0.8rem; font-weight: 600; flex-shrink: 0; }
-  .tag { margin-left: auto; font-size: 0.75rem; color: var(--muted); }
-  .empty { color: var(--muted); padding: 24px; text-align: center; border: 1px dashed var(--border); border-radius: 12px; margin-bottom: 16px; }
-  .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  button { appearance: none; border: 0; border-radius: 10px; padding: 12px 16px; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
-  button.primary { background: var(--accent); color: #fff; }
-  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
-  #out { margin-top: 16px; width: 100%; min-height: 120px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; line-height: 1.5; resize: vertical; }
-  .toast { color: var(--muted); font-size: 0.85rem; margin-top: 8px; min-height: 1.2em; }
-  .note { font-size: 0.8rem; color: var(--muted); }
+  body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, "Noto Sans TC", "PingFang TC", sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
+  main { max-width:560px; margin:0 auto; padding:24px 16px 48px; }
+  h1 { font-size:1.25rem; margin:0 0 4px; }
+  .hint { color:var(--muted); font-size:0.9rem; margin:0 0 16px; line-height:1.55; }
+  .status { font-size:0.85rem; margin:0 0 16px; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--card); color:var(--muted); }
+  .status.ok { color:var(--ok); }
+  ol#list { list-style:none; padding:0; margin:0 0 16px; display:flex; flex-direction:column; gap:8px; counter-reset:item; }
+  li.item { counter-increment:item; display:flex; align-items:center; gap:12px; background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 16px; cursor:grab; user-select:none; touch-action:none; }
+  li.item:active { cursor:grabbing; }
+  li.item.dragging { opacity:0.55; }
+  li.item.over { outline:2px solid var(--accent); }
+  li.item::before { content:counter(item); width:1.5rem; height:1.5rem; border-radius:999px; background:var(--border); display:grid; place-items:center; font-size:0.8rem; font-weight:600; flex-shrink:0; }
+  .tag { margin-left:auto; font-size:0.75rem; color:var(--muted); }
+  .actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+  button { appearance:none; border:0; border-radius:10px; padding:12px 16px; font-size:0.95rem; font-weight:600; cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; }
+  button.ghost { background:transparent; color:var(--text); border:1px solid var(--border); }
+  #out { margin-top:12px; width:100%; min-height:140px; border-radius:12px; border:1px solid var(--border); background:var(--card); color:var(--text); padding:12px; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.85rem; line-height:1.5; resize:vertical; }
+  .note { font-size:0.8rem; color:var(--muted); width:100%; }
 </style>
 </head>
 <body>
 <main>
   <h1>優先表</h1>
-  <p class="hint">按住項目上下拖曳排序。順序會<strong>自動保存在此瀏覽器</strong>；重新打開仍是新順序。換裝置或清除網站資料會丟掉。下方「複製新順序」可選，用來同步給待辦助手。</p>
+  <p class="hint">按住拖曳排序。按「儲存到雲端」會複製同步字串——貼回待辦助手後，雲端真相會更新；之後任何裝置用 <code>,</code> 開表都會看到新順序。此瀏覽器僅作離線快取。</p>
+  <div class="status" id="status">載入雲端資料中…</div>
   <ol id="list"></ol>
-  <div id="empty" class="empty" hidden>目前無任務</div>
   <div class="actions">
-    <button type="button" class="primary" id="copyBtn">複製新順序</button>
-    <button type="button" class="ghost" id="resetBtn">恢復預設順序</button>
-    <span class="note">複製＝可選同步給待辦助手</span>
+    <button type="button" class="primary" id="saveCloudBtn">儲存到雲端</button>
+    <button type="button" class="ghost" id="reloadBtn">重新載入雲端</button>
+    <button type="button" class="ghost" id="copyBtn">複製新順序</button>
+    <span class="note">雲端寫入由待辦助手執行（前端不含寫入金鑰）。</span>
   </div>
-  <textarea id="out" readonly placeholder="編號清單（可選複製）"></textarea>
-  <div class="toast" id="toast"></div>
+  <textarea id="out" readonly placeholder="同步字串會出現在這裡"></textarea>
 </main>
 <script>
-const STORAGE_KEY = "grok-priority-board-v1";
+const CACHE_KEY = "grok-priority-board-v1";
+const DATA_URL = "https://raw.githubusercontent.com/woolitoideas/wafer-game/bot-priority-board/bot-priority/priority.json";
 const DEFAULT_TASKS = [
   { name: "跟 Tyson 聊一下", tag: "工作" },
   { name: "回覆芳瑜", tag: "工作" },
@@ -55,51 +56,86 @@ const DEFAULT_TASKS = [
   { name: "公告改名", tag: "工作" }
 ];
 
-let TASKS = loadTasks();
-
-function loadTasks() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return DEFAULT_TASKS.map((t) => ({ ...t }));
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed) || !parsed.length) return DEFAULT_TASKS.map((t) => ({ ...t }));
-    return parsed.map((t) => ({
-      name: String(t.name || t),
-      tag: t.tag ? String(t.tag) : ""
-    }));
-  } catch (e) {
-    return DEFAULT_TASKS.map((t) => ({ ...t }));
-  }
-}
-
-function saveTasks() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(TASKS));
-    toast.textContent = "已自動保存在此瀏覽器。";
-  } catch (e) {
-    toast.textContent = "無法寫入此瀏覽器存檔。";
-  }
-}
+let TASKS = DEFAULT_TASKS.map((t) => ({ ...t }));
+let cloudUpdatedAt = null;
 
 const list = document.getElementById("list");
-const empty = document.getElementById("empty");
+const statusEl = document.getElementById("status");
 const out = document.getElementById("out");
-const toast = document.getElementById("toast");
+
+function setStatus(msg, ok) {
+  statusEl.textContent = msg;
+  statusEl.classList.toggle("ok", !!ok);
+}
+
+function cacheWrite() {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ updatedAt: cloudUpdatedAt, tasks: TASKS }));
+  } catch (_) {}
+}
+
+function cacheRead() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.tasks)) return null;
+    return parsed;
+  } catch (_) {
+    return null;
+  }
+}
+
+function normalizeTasks(arr) {
+  return (arr || []).map((t) => ({
+    name: String(t.name || t).trim(),
+    tag: t.tag ? String(t.tag) : ""
+  })).filter((t) => t.name);
+}
+
+async function loadCloud() {
+  setStatus("載入雲端資料中…");
+  try {
+    const res = await fetch(DATA_URL + "?t=" + Date.now(), { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    TASKS = normalizeTasks(data.tasks);
+    cloudUpdatedAt = data.updatedAt || null;
+    cacheWrite();
+    render();
+    setStatus("已載入雲端" + (cloudUpdatedAt ? "（" + cloudUpdatedAt + "）" : "") + "。拖曳後請按「儲存到雲端」。", true);
+  } catch (e) {
+    const cached = cacheRead();
+    if (cached && cached.tasks && cached.tasks.length) {
+      TASKS = normalizeTasks(cached.tasks);
+      cloudUpdatedAt = cached.updatedAt || null;
+      render();
+      setStatus("雲端讀取失敗，已用本機快取。連上網後請按「重新載入雲端」。");
+    } else {
+      TASKS = DEFAULT_TASKS.map((t) => ({ ...t }));
+      render();
+      setStatus("雲端讀取失敗，顯示頁內預設清單。");
+    }
+  }
+}
+
+function syncBlock() {
+  const lines = TASKS.map((t, i) => `${i + 1}. ${t.name}${t.tag ? `（${t.tag}）` : ""}`);
+  return ["【雲端優先表】請待辦助手依此順序更新並重推", ...lines].join("\n");
+}
+
+function refreshOut() {
+  out.value = syncBlock();
+}
 
 function render() {
   list.innerHTML = "";
-  if (!TASKS.length) {
-    empty.hidden = false;
-    out.value = "（目前無任務）";
-    return;
-  }
-  empty.hidden = true;
   TASKS.forEach((t, i) => {
     const li = document.createElement("li");
     li.className = "item";
     li.draggable = true;
     li.dataset.index = String(i);
-    li.innerHTML = `<span class="name"></span><span class="tag"></span>`;
+    li.innerHTML = '<span class="name"></span><span class="tag"></span>';
     li.querySelector(".name").textContent = t.name;
     li.querySelector(".tag").textContent = t.tag || "";
     list.appendChild(li);
@@ -107,14 +143,7 @@ function render() {
   refreshOut();
 }
 
-function refreshOut() {
-  out.value = TASKS.length
-    ? TASKS.map((t, i) => `${i + 1}. ${t.name}${t.tag ? `（${t.tag}）` : ""}`).join("\n")
-    : "（目前無任務）";
-}
-
 let dragIndex = null;
-
 list.addEventListener("dragstart", (e) => {
   const li = e.target.closest("li.item");
   if (!li) return;
@@ -122,14 +151,12 @@ list.addEventListener("dragstart", (e) => {
   li.classList.add("dragging");
   e.dataTransfer.effectAllowed = "move";
 });
-
 list.addEventListener("dragend", (e) => {
   const li = e.target.closest("li.item");
   if (li) li.classList.remove("dragging");
   list.querySelectorAll(".over").forEach((n) => n.classList.remove("over"));
   dragIndex = null;
 });
-
 list.addEventListener("dragover", (e) => {
   e.preventDefault();
   const li = e.target.closest("li.item");
@@ -137,7 +164,6 @@ list.addEventListener("dragover", (e) => {
   list.querySelectorAll(".over").forEach((n) => n.classList.remove("over"));
   li.classList.add("over");
 });
-
 list.addEventListener("drop", (e) => {
   e.preventDefault();
   const li = e.target.closest("li.item");
@@ -146,32 +172,27 @@ list.addEventListener("drop", (e) => {
   if (to === dragIndex) return;
   const [moved] = TASKS.splice(dragIndex, 1);
   TASKS.splice(to, 0, moved);
-  saveTasks();
+  cacheWrite();
   render();
+  setStatus("已暫存在本機快取。按「儲存到雲端」並貼回待辦助手後，其他裝置才會同步。");
 });
 
-document.getElementById("copyBtn").addEventListener("click", async () => {
+async function copySync() {
   refreshOut();
   try {
     await navigator.clipboard.writeText(out.value);
-    toast.textContent = "已複製。可貼回待辦助手做同步（可選）。";
-  } catch {
+    setStatus("已複製同步字串。請貼到待辦助手聊天，我會寫入雲端並重推頁面。", true);
+  } catch (_) {
     out.select();
-    toast.textContent = "請手動複製上方文字（可選同步）。";
+    setStatus("請手動複製下方字串，貼到待辦助手聊天以寫入雲端。");
   }
-});
+}
 
-document.getElementById("resetBtn").addEventListener("click", () => {
-  TASKS = DEFAULT_TASKS.map((t) => ({ ...t }));
-  saveTasks();
-  render();
-  toast.textContent = "已恢復預設順序並保存。";
-});
+document.getElementById("saveCloudBtn").addEventListener("click", copySync);
+document.getElementById("copyBtn").addEventListener("click", copySync);
+document.getElementById("reloadBtn").addEventListener("click", loadCloud);
 
-render();
-toast.textContent = localStorage.getItem(STORAGE_KEY)
-  ? "已載入此瀏覽器上次保存的順序。"
-  : "尚未有存檔，顯示預設清單；拖曳後會自動保存。";
+loadCloud();
 </script>
 </body>
 </html>
