@@ -33,11 +33,12 @@
 <body>
 <main>
   <h1>優先表</h1>
-  <p class="hint">按住項目上下拖曳排序。排好後按「複製新順序」,貼回待辦助手即可寫回清單。</p>
+  <p class="hint">按住項目上下拖曳排序。排好後按「複製新順序」，貼回待辦助手才會永久保存（只重新打開此頁不會記住新順序）。</p>
   <ol id="list"></ol>
   <div id="empty" class="empty" hidden>目前無任務</div>
   <div class="actions">
     <button type="button" class="primary" id="copyBtn">複製新順序</button>
+    <span class="tag" style="margin:0;align-self:center">需貼回待辦助手才會永久保存</span>
     <button type="button" class="ghost" id="showBtn">顯示編號清單</button>
   </div>
   <textarea id="out" readonly placeholder="排好後的編號清單會出現在這裡"></textarea>
@@ -127,10 +128,10 @@ document.getElementById("copyBtn").addEventListener("click", async () => {
   refreshOut();
   try {
     await navigator.clipboard.writeText(out.value);
-    toast.textContent = "已複製。貼回待辦助手即可更新清單。";
+    toast.textContent = "已複製。請貼回待辦助手，才會永久保存並更新此頁。";
   } catch {
     out.select();
-    toast.textContent = "請手動複製上方文字,再貼回待辦助手。";
+    toast.textContent = "請手動複製上方文字，再貼回待辦助手。";
   }
 });
 
