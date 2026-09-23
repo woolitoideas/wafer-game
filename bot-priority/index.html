@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>優先表（雲端）</title>
+<title>優先表（雲端同步）</title>
 <style>
-  :root { color-scheme: light dark; --bg:#0f1115; --card:#1a1e27; --text:#eef1f6; --muted:#9aa3b2; --accent:#6ea8fe; --border:#2a3140; --ok:#3ecf8e; }
+  :root { color-scheme: light dark; --bg:#0f1115; --card:#1a1e27; --text:#eef1f6; --muted:#9aa3b2; --accent:#6ea8fe; --border:#2a3140; --ok:#3ecf8e; --bad:#f87171; }
   @media (prefers-color-scheme: light) {
-    :root { --bg:#f4f6fa; --card:#fff; --text:#1b1f2a; --muted:#667085; --accent:#2563eb; --border:#e4e7ec; --ok:#059669; }
+    :root { --bg:#f4f6fa; --card:#fff; --text:#1b1f2a; --muted:#667085; --accent:#2563eb; --border:#e4e7ec; --ok:#059669; --bad:#dc2626; }
   }
   * { box-sizing: border-box; }
   body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, "Noto Sans TC", "PingFang TC", sans-serif; background:var(--bg); color:var(--text); min-height:100vh; }
@@ -16,6 +16,7 @@
   .hint { color:var(--muted); font-size:0.9rem; margin:0 0 16px; line-height:1.55; }
   .status { font-size:0.85rem; margin:0 0 16px; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--card); color:var(--muted); }
   .status.ok { color:var(--ok); }
+  .status.bad { color:var(--bad); }
   ol#list { list-style:none; padding:0; margin:0 0 16px; display:flex; flex-direction:column; gap:8px; counter-reset:item; }
   li.item { counter-increment:item; display:flex; align-items:center; gap:12px; background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 16px; cursor:grab; user-select:none; touch-action:none; }
   li.item:active { cursor:grabbing; }
@@ -23,31 +24,29 @@
   li.item.over { outline:2px solid var(--accent); }
   li.item::before { content:counter(item); width:1.5rem; height:1.5rem; border-radius:999px; background:var(--border); display:grid; place-items:center; font-size:0.8rem; font-weight:600; flex-shrink:0; }
   .tag { margin-left:auto; font-size:0.75rem; color:var(--muted); }
-  .actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:8px; }
+  .actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
   button { appearance:none; border:0; border-radius:10px; padding:12px 16px; font-size:0.95rem; font-weight:600; cursor:pointer; }
   button.primary { background:var(--accent); color:#fff; }
+  button.primary:disabled { opacity:0.6; cursor:wait; }
   button.ghost { background:transparent; color:var(--text); border:1px solid var(--border); }
-  #out { margin-top:12px; width:100%; min-height:140px; border-radius:12px; border:1px solid var(--border); background:var(--card); color:var(--text); padding:12px; font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.85rem; line-height:1.5; resize:vertical; }
-  .note { font-size:0.8rem; color:var(--muted); width:100%; }
+  .note { font-size:0.8rem; color:var(--muted); width:100%; margin-top:4px; }
 </style>
 </head>
 <body>
 <main>
   <h1>優先表</h1>
-  <p class="hint">按住拖曳排序。按「儲存到雲端」會複製同步字串——貼回待辦助手後，雲端真相會更新；之後任何裝置用 <code>,</code> 開表都會看到新順序。此瀏覽器僅作離線快取。</p>
-  <div class="status" id="status">載入雲端資料中…</div>
+  <p class="hint">拖曳排序後按「儲存到雲端」即可寫入雲端。換裝置開啟同一頁會讀到最新順序（無需貼回聊天）。本機僅作離線快取。</p>
+  <div class="status" id="status">載入雲端中…</div>
   <ol id="list"></ol>
   <div class="actions">
-    <button type="button" class="primary" id="saveCloudBtn">儲存到雲端</button>
+    <button type="button" class="primary" id="saveBtn">儲存到雲端</button>
     <button type="button" class="ghost" id="reloadBtn">重新載入雲端</button>
-    <button type="button" class="ghost" id="copyBtn">複製新順序</button>
-    <span class="note">雲端寫入由待辦助手執行（前端不含寫入金鑰）。</span>
+    <span class="note">雲端：受限 JSON API（非 GitHub PAT）。知道此頁網址的人可讀寫此看板。</span>
   </div>
-  <textarea id="out" readonly placeholder="同步字串會出現在這裡"></textarea>
 </main>
 <script>
-const CACHE_KEY = "grok-priority-board-v1";
-const DATA_URL = "https://raw.githubusercontent.com/woolitoideas/wafer-game/bot-priority-board/bot-priority/priority.json";
+const CLOUD_URL = "https://crudcrud.com/api/3fe8676481e24db5a0ff6c1e33ae43fa/priority/6ab37f6a3d1b1003e88ec8e8";
+const CACHE_KEY = "grok-priority-board-cloud-v1";
 const DEFAULT_TASKS = [
   { name: "跟 Tyson 聊一下", tag: "工作" },
   { name: "回覆芳瑜", tag: "工作" },
@@ -57,20 +56,28 @@ const DEFAULT_TASKS = [
 ];
 
 let TASKS = DEFAULT_TASKS.map((t) => ({ ...t }));
-let cloudUpdatedAt = null;
+let dirty = false;
 
 const list = document.getElementById("list");
 const statusEl = document.getElementById("status");
-const out = document.getElementById("out");
+const saveBtn = document.getElementById("saveBtn");
 
-function setStatus(msg, ok) {
+function setStatus(msg, kind) {
   statusEl.textContent = msg;
-  statusEl.classList.toggle("ok", !!ok);
+  statusEl.classList.remove("ok", "bad");
+  if (kind) statusEl.classList.add(kind);
+}
+
+function normalize(arr) {
+  return (arr || []).map((t) => ({
+    name: String(t.name || t).trim(),
+    tag: t.tag ? String(t.tag) : ""
+  })).filter((t) => t.name);
 }
 
 function cacheWrite() {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ updatedAt: cloudUpdatedAt, tasks: TASKS }));
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ tasks: TASKS, savedAt: Date.now() }));
   } catch (_) {}
 }
 
@@ -78,54 +85,11 @@ function cacheRead() {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed || !Array.isArray(parsed.tasks)) return null;
-    return parsed;
+    const p = JSON.parse(raw);
+    return p && Array.isArray(p.tasks) ? normalize(p.tasks) : null;
   } catch (_) {
     return null;
   }
-}
-
-function normalizeTasks(arr) {
-  return (arr || []).map((t) => ({
-    name: String(t.name || t).trim(),
-    tag: t.tag ? String(t.tag) : ""
-  })).filter((t) => t.name);
-}
-
-async function loadCloud() {
-  setStatus("載入雲端資料中…");
-  try {
-    const res = await fetch(DATA_URL + "?t=" + Date.now(), { cache: "no-store" });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    TASKS = normalizeTasks(data.tasks);
-    cloudUpdatedAt = data.updatedAt || null;
-    cacheWrite();
-    render();
-    setStatus("已載入雲端" + (cloudUpdatedAt ? "（" + cloudUpdatedAt + "）" : "") + "。拖曳後請按「儲存到雲端」。", true);
-  } catch (e) {
-    const cached = cacheRead();
-    if (cached && cached.tasks && cached.tasks.length) {
-      TASKS = normalizeTasks(cached.tasks);
-      cloudUpdatedAt = cached.updatedAt || null;
-      render();
-      setStatus("雲端讀取失敗，已用本機快取。連上網後請按「重新載入雲端」。");
-    } else {
-      TASKS = DEFAULT_TASKS.map((t) => ({ ...t }));
-      render();
-      setStatus("雲端讀取失敗，顯示頁內預設清單。");
-    }
-  }
-}
-
-function syncBlock() {
-  const lines = TASKS.map((t, i) => `${i + 1}. ${t.name}${t.tag ? `（${t.tag}）` : ""}`);
-  return ["【雲端優先表】請待辦助手依此順序更新並重推", ...lines].join("\n");
-}
-
-function refreshOut() {
-  out.value = syncBlock();
 }
 
 function render() {
@@ -140,7 +104,58 @@ function render() {
     li.querySelector(".tag").textContent = t.tag || "";
     list.appendChild(li);
   });
-  refreshOut();
+}
+
+async function loadCloud() {
+  setStatus("載入雲端中…");
+  try {
+    const res = await fetch(CLOUD_URL + "?t=" + Date.now(), { cache: "no-store" });
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    TASKS = normalize(data.tasks);
+    dirty = false;
+    cacheWrite();
+    render();
+    setStatus("已從雲端載入" + (data.updatedAt ? "（" + data.updatedAt + "）" : "") + "。拖完記得按儲存。", "ok");
+  } catch (e) {
+    const cached = cacheRead();
+    if (cached && cached.length) {
+      TASKS = cached;
+      render();
+      setStatus("雲端讀取失敗，已用本機快取。連線後請重新載入或再儲存。", "bad");
+    } else {
+      TASKS = DEFAULT_TASKS.map((t) => ({ ...t }));
+      render();
+      setStatus("雲端讀取失敗，顯示預設清單。", "bad");
+    }
+  }
+}
+
+async function saveCloud() {
+  saveBtn.disabled = true;
+  setStatus("正在寫入雲端…");
+  const payload = {
+    updatedAt: new Date().toISOString(),
+    tasks: TASKS
+  };
+  try {
+    const res = await fetch(CLOUD_URL, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok && res.status !== 200 && res.status !== 204) {
+      throw new Error("HTTP " + res.status);
+    }
+    dirty = false;
+    cacheWrite();
+    setStatus("已儲存到雲端。換裝置開啟此頁即可看到新順序。", "ok");
+  } catch (e) {
+    cacheWrite();
+    setStatus("雲端寫入失敗：" + (e && e.message ? e.message : e) + "。已暫存本機。", "bad");
+  } finally {
+    saveBtn.disabled = false;
+  }
 }
 
 let dragIndex = null;
@@ -172,24 +187,13 @@ list.addEventListener("drop", (e) => {
   if (to === dragIndex) return;
   const [moved] = TASKS.splice(dragIndex, 1);
   TASKS.splice(to, 0, moved);
+  dirty = true;
   cacheWrite();
   render();
-  setStatus("已暫存在本機快取。按「儲存到雲端」並貼回待辦助手後，其他裝置才會同步。");
+  setStatus("順序已改（本機）。按「儲存到雲端」後其他裝置才會同步。");
 });
 
-async function copySync() {
-  refreshOut();
-  try {
-    await navigator.clipboard.writeText(out.value);
-    setStatus("已複製同步字串。請貼到待辦助手聊天，我會寫入雲端並重推頁面。", true);
-  } catch (_) {
-    out.select();
-    setStatus("請手動複製下方字串，貼到待辦助手聊天以寫入雲端。");
-  }
-}
-
-document.getElementById("saveCloudBtn").addEventListener("click", copySync);
-document.getElementById("copyBtn").addEventListener("click", copySync);
+document.getElementById("saveBtn").addEventListener("click", saveCloud);
 document.getElementById("reloadBtn").addEventListener("click", loadCloud);
 
 loadCloud();
