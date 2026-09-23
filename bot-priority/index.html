@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>優先表</title>
+<style>
+  :root { color-scheme: light dark; --bg: #0f1115; --card: #1a1e27; --text: #eef1f6; --muted: #9aa3b2; --accent: #6ea8fe; --border: #2a3140; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f4f6fa; --card: #fff; --text: #1b1f2a; --muted: #667085; --accent: #2563eb; --border: #e4e7ec; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, "Noto Sans TC", "PingFang TC", sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  main { max-width: 560px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 1.25rem; margin: 0 0 4px; }
+  p.hint { color: var(--muted); font-size: 0.9rem; margin: 0 0 20px; line-height: 1.5; }
+  ol#list { list-style: none; padding: 0; margin: 0 0 16px; display: flex; flex-direction: column; gap: 8px; counter-reset: item; }
+  li.item { counter-increment: item; display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; cursor: grab; user-select: none; touch-action: none; }
+  li.item:active { cursor: grabbing; }
+  li.item.dragging { opacity: 0.55; }
+  li.item.over { outline: 2px solid var(--accent); }
+  li.item::before { content: counter(item); width: 1.5rem; height: 1.5rem; border-radius: 999px; background: var(--border); display: grid; place-items: center; font-size: 0.8rem; font-weight: 600; flex-shrink: 0; }
+  .tag { margin-left: auto; font-size: 0.75rem; color: var(--muted); }
+  .empty { color: var(--muted); padding: 24px; text-align: center; border: 1px dashed var(--border); border-radius: 12px; margin-bottom: 16px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  button { appearance: none; border: 0; border-radius: 10px; padding: 12px 16px; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  #out { margin-top: 16px; width: 100%; min-height: 120px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; line-height: 1.5; resize: vertical; }
+  .toast { color: var(--muted); font-size: 0.85rem; margin-top: 8px; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<main>
+  <h1>優先表</h1>
+  <p class="hint">按住項目上下拖曳排序。排好後按「複製新順序」,貼回待辦助手即可寫回清單。</p>
+  <ol id="list"></ol>
+  <div id="empty" class="empty" hidden>目前無任務</div>
+  <div class="actions">
+    <button type="button" class="primary" id="copyBtn">複製新順序</button>
+    <button type="button" class="ghost" id="showBtn">顯示編號清單</button>
+  </div>
+  <textarea id="out" readonly placeholder="排好後的編號清單會出現在這裡"></textarea>
+  <div class="toast" id="toast"></div>
+</main>
+<script>
+const TASKS = [
+  { name: "跟 Tyson 聊一下", tag: "工作" },
+  { name: "回覆芳瑜", tag: "工作" },
+  { name: "開桃美館群組", tag: "工作" },
+  { name: "Follow 綠色證券", tag: "工作" },
+  { name: "公告改名", tag: "工作" }
+];
+
+const list = document.getElementById("list");
+const empty = document.getElementById("empty");
+const out = document.getElementById("out");
+const toast = document.getElementById("toast");
+
+function render() {
+  list.innerHTML = "";
+  if (!TASKS.length) {
+    empty.hidden = false;
+    out.value = "（目前無任務）";
+    return;
+  }
+  empty.hidden = true;
+  TASKS.forEach((t, i) => {
+    const li = document.createElement("li");
+    li.className = "item";
+    li.draggable = true;
+    li.dataset.index = String(i);
+    li.innerHTML = `<span class="name"></span><span class="tag"></span>`;
+    li.querySelector(".name").textContent = t.name;
+    li.querySelector(".tag").textContent = t.tag || "";
+    list.appendChild(li);
+  });
+  refreshOut();
+}
+
+function refreshOut() {
+  out.value = TASKS.length
+    ? TASKS.map((t, i) => `${i + 1}. ${t.name}${t.tag ? `（${t.tag}）` : ""}`).join("\n")
+    : "（目前無任務）";
+}
+
+let dragIndex = null;
+
+list.addEventListener("dragstart", (e) => {
+  const li = e.target.closest("li.item");
+  if (!li) return;
+  dragIndex = Number(li.dataset.index);
+  li.classList.add("dragging");
+  e.dataTransfer.effectAllowed = "move";
+});
+
+list.addEventListener("dragend", (e) => {
+  const li = e.target.closest("li.item");
+  if (li) li.classList.remove("dragging");
+  list.querySelectorAll(".over").forEach((n) => n.classList.remove("over"));
+  dragIndex = null;
+});
+
+list.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  const li = e.target.closest("li.item");
+  if (!li || dragIndex === null) return;
+  list.querySelectorAll(".over").forEach((n) => n.classList.remove("over"));
+  li.classList.add("over");
+});
+
+list.addEventListener("drop", (e) => {
+  e.preventDefault();
+  const li = e.target.closest("li.item");
+  if (!li || dragIndex === null) return;
+  const to = Number(li.dataset.index);
+  if (to === dragIndex) return;
+  const [moved] = TASKS.splice(dragIndex, 1);
+  TASKS.splice(to, 0, moved);
+  render();
+});
+
+// Touch-friendly pointer fallback: simple up/down via long-press swap not needed;
+// HTML5 DnD works on desktop; for mobile use buttons later if needed.
+
+document.getElementById("copyBtn").addEventListener("click", async () => {
+  refreshOut();
+  try {
+    await navigator.clipboard.writeText(out.value);
+    toast.textContent = "已複製。貼回待辦助手即可更新清單。";
+  } catch {
+    out.select();
+    toast.textContent = "請手動複製上方文字,再貼回待辦助手。";
+  }
+});
+
+document.getElementById("showBtn").addEventListener("click", () => {
+  refreshOut();
+  toast.textContent = "已更新下方編號清單。";
+});
+
+render();
+</script>
+</body>
+</html>
