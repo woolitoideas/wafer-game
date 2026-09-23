@@ -22,36 +22,64 @@
   li.item::before { content: counter(item); width: 1.5rem; height: 1.5rem; border-radius: 999px; background: var(--border); display: grid; place-items: center; font-size: 0.8rem; font-weight: 600; flex-shrink: 0; }
   .tag { margin-left: auto; font-size: 0.75rem; color: var(--muted); }
   .empty { color: var(--muted); padding: 24px; text-align: center; border: 1px dashed var(--border); border-radius: 12px; margin-bottom: 16px; }
-  .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   button { appearance: none; border: 0; border-radius: 10px; padding: 12px 16px; font-size: 0.95rem; font-weight: 600; cursor: pointer; }
   button.primary { background: var(--accent); color: #fff; }
   button.ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
   #out { margin-top: 16px; width: 100%; min-height: 120px; border-radius: 12px; border: 1px solid var(--border); background: var(--card); color: var(--text); padding: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; line-height: 1.5; resize: vertical; }
   .toast { color: var(--muted); font-size: 0.85rem; margin-top: 8px; min-height: 1.2em; }
+  .note { font-size: 0.8rem; color: var(--muted); }
 </style>
 </head>
 <body>
 <main>
   <h1>優先表</h1>
-  <p class="hint">按住項目上下拖曳排序。排好後按「複製新順序」，貼回待辦助手才會永久保存（只重新打開此頁不會記住新順序）。</p>
+  <p class="hint">按住項目上下拖曳排序。順序會<strong>自動保存在此瀏覽器</strong>；重新打開仍是新順序。換裝置或清除網站資料會丟掉。下方「複製新順序」可選，用來同步給待辦助手。</p>
   <ol id="list"></ol>
   <div id="empty" class="empty" hidden>目前無任務</div>
   <div class="actions">
     <button type="button" class="primary" id="copyBtn">複製新順序</button>
-    <span class="tag" style="margin:0;align-self:center">需貼回待辦助手才會永久保存</span>
-    <button type="button" class="ghost" id="showBtn">顯示編號清單</button>
+    <button type="button" class="ghost" id="resetBtn">恢復預設順序</button>
+    <span class="note">複製＝可選同步給待辦助手</span>
   </div>
-  <textarea id="out" readonly placeholder="排好後的編號清單會出現在這裡"></textarea>
+  <textarea id="out" readonly placeholder="編號清單（可選複製）"></textarea>
   <div class="toast" id="toast"></div>
 </main>
 <script>
-const TASKS = [
+const STORAGE_KEY = "grok-priority-board-v1";
+const DEFAULT_TASKS = [
   { name: "跟 Tyson 聊一下", tag: "工作" },
   { name: "回覆芳瑜", tag: "工作" },
   { name: "開桃美館群組", tag: "工作" },
   { name: "Follow 綠色證券", tag: "工作" },
   { name: "公告改名", tag: "工作" }
 ];
+
+let TASKS = loadTasks();
+
+function loadTasks() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return DEFAULT_TASKS.map((t) => ({ ...t }));
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || !parsed.length) return DEFAULT_TASKS.map((t) => ({ ...t }));
+    return parsed.map((t) => ({
+      name: String(t.name || t),
+      tag: t.tag ? String(t.tag) : ""
+    }));
+  } catch (e) {
+    return DEFAULT_TASKS.map((t) => ({ ...t }));
+  }
+}
+
+function saveTasks() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(TASKS));
+    toast.textContent = "已自動保存在此瀏覽器。";
+  } catch (e) {
+    toast.textContent = "無法寫入此瀏覽器存檔。";
+  }
+}
 
 const list = document.getElementById("list");
 const empty = document.getElementById("empty");
@@ -118,29 +146,32 @@ list.addEventListener("drop", (e) => {
   if (to === dragIndex) return;
   const [moved] = TASKS.splice(dragIndex, 1);
   TASKS.splice(to, 0, moved);
+  saveTasks();
   render();
 });
-
-// Touch-friendly pointer fallback: simple up/down via long-press swap not needed;
-// HTML5 DnD works on desktop; for mobile use buttons later if needed.
 
 document.getElementById("copyBtn").addEventListener("click", async () => {
   refreshOut();
   try {
     await navigator.clipboard.writeText(out.value);
-    toast.textContent = "已複製。請貼回待辦助手，才會永久保存並更新此頁。";
+    toast.textContent = "已複製。可貼回待辦助手做同步（可選）。";
   } catch {
     out.select();
-    toast.textContent = "請手動複製上方文字，再貼回待辦助手。";
+    toast.textContent = "請手動複製上方文字（可選同步）。";
   }
 });
 
-document.getElementById("showBtn").addEventListener("click", () => {
-  refreshOut();
-  toast.textContent = "已更新下方編號清單。";
+document.getElementById("resetBtn").addEventListener("click", () => {
+  TASKS = DEFAULT_TASKS.map((t) => ({ ...t }));
+  saveTasks();
+  render();
+  toast.textContent = "已恢復預設順序並保存。";
 });
 
 render();
+toast.textContent = localStorage.getItem(STORAGE_KEY)
+  ? "已載入此瀏覽器上次保存的順序。"
+  : "尚未有存檔，顯示預設清單；拖曳後會自動保存。";
 </script>
 </body>
 </html>
