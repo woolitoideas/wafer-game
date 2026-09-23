@@ -20,12 +20,16 @@
   .status .msg { flex:1; min-width:12rem; }
   .status button.retry { appearance:none; border:1px solid currentColor; background:transparent; color:inherit; border-radius:8px; padding:6px 10px; font-size:0.8rem; font-weight:600; cursor:pointer; }
   ol#list { list-style:none; padding:0; margin:0 0 16px; display:flex; flex-direction:column; gap:8px; counter-reset:item; }
-  li.item { counter-increment:item; display:flex; align-items:center; gap:12px; background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 16px; cursor:grab; user-select:none; touch-action:none; }
-  li.item:active { cursor:grabbing; }
+  li.item { counter-increment:item; display:flex; align-items:center; gap:10px; background:var(--card); border:1px solid var(--border); border-radius:12px; padding:12px 14px; user-select:none; touch-action:none; }
   li.item.dragging { opacity:0.55; }
   li.item.over { outline:2px solid var(--accent); }
+  li.item.done .name { text-decoration: line-through; color:var(--muted); }
   li.item::before { content:counter(item); width:1.5rem; height:1.5rem; border-radius:999px; background:var(--border); display:grid; place-items:center; font-size:0.8rem; font-weight:600; flex-shrink:0; }
-  .tag { margin-left:auto; font-size:0.75rem; color:var(--muted); }
+  .handle { cursor:grab; color:var(--muted); font-size:1rem; padding:4px 2px; flex-shrink:0; }
+  .handle:active { cursor:grabbing; }
+  .check { width:1.25rem; height:1.25rem; accent-color:var(--accent); cursor:pointer; flex-shrink:0; }
+  .name { flex:1; min-width:0; }
+  .tag { font-size:0.75rem; color:var(--muted); flex-shrink:0; }
   .actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
   button.ghost { appearance:none; border:1px solid var(--border); background:transparent; color:var(--text); border-radius:10px; padding:12px 16px; font-size:0.95rem; font-weight:600; cursor:pointer; }
   .note { font-size:0.8rem; color:var(--muted); width:100%; margin-top:4px; }
@@ -34,28 +38,22 @@
 <body>
 <main>
   <h1>優先表</h1>
-  <p class="hint">拖曳改順序後會立刻自動存到雲端。換裝置開同一頁即可看到最新順序。</p>
+  <p class="hint">勾選完成會劃掉但仍留在清單。左側⋮⋮可拖曳排序。變更會自動存雲端。</p>
   <div class="status" id="status"><span class="msg">載入雲端中…</span></div>
   <ol id="list"></ol>
   <div class="actions">
     <button type="button" class="ghost" id="reloadBtn">重新載入雲端</button>
     <button type="button" class="ghost" id="saveBtn">立即儲存</button>
-    <span class="note">雲端：受限 JSON API（非 GitHub PAT）。知道此頁網址的人可讀寫此看板。</span>
+    <span class="note">雲端：受限 JSON API（非 GitHub PAT）。完成＝done:true，不刪除。</span>
   </div>
 </main>
 <script>
 const CLOUD_URL = "https://crudcrud.com/api/3fe8676481e24db5a0ff6c1e33ae43fa/priority/6ab37f6a3d1b1003e88ec8e8";
-const CACHE_KEY = "grok-priority-board-cloud-v1";
+const CACHE_KEY = "grok-priority-board-cloud-v2";
 const AUTO_SAVE_MS = 120;
-const DEFAULT_TASKS = [
-  { name: "跟 Tyson 聊一下", tag: "工作" },
-  { name: "回覆芳瑜", tag: "工作" },
-  { name: "開桃美館群組", tag: "工作" },
-  { name: "Follow 綠色證券", tag: "工作" },
-  { name: "公告改名", tag: "工作" }
-];
+const DEFAULT_TASKS = [{"name": "公告改名", "tag": "工作", "done": false}, {"name": "跟 Tyson 聊一下", "tag": "工作", "done": false}, {"name": "回覆芳瑜", "tag": "工作", "done": false}, {"name": "開桃美館群組", "tag": "工作", "done": false}, {"name": "Follow 綠色證券", "tag": "工作", "done": false}];
 
-let TASKS = DEFAULT_TASKS.map((t) => ({ ...t }));
+let TASKS = DEFAULT_TASKS.map((t) => ({ name: t.name, tag: t.tag || "", done: !!t.done }));
 let saveTimer = null;
 let saveAbort = null;
 let saveSeq = 0;
@@ -77,7 +75,7 @@ function setStatus(msg, kind, withRetry) {
     btn.type = "button";
     btn.className = "retry";
     btn.textContent = "重試儲存";
-    btn.addEventListener("click", () => saveCloud({ immediate: true }));
+    btn.addEventListener("click", () => saveCloud());
     statusEl.appendChild(btn);
   }
 }
@@ -85,37 +83,40 @@ function setStatus(msg, kind, withRetry) {
 function normalize(arr) {
   return (arr || []).map((t) => ({
     name: String(t.name || t).trim(),
-    tag: t.tag ? String(t.tag) : ""
+    tag: t.tag ? String(t.tag) : "",
+    done: !!t.done
   })).filter((t) => t.name);
 }
 
 function cacheWrite() {
-  try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ tasks: TASKS, savedAt: Date.now() }));
-  } catch (_) {}
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ tasks: TASKS, savedAt: Date.now() })); } catch (_) {}
 }
-
 function cacheRead() {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     if (!raw) return null;
     const p = JSON.parse(raw);
     return p && Array.isArray(p.tasks) ? normalize(p.tasks) : null;
-  } catch (_) {
-    return null;
-  }
+  } catch (_) { return null; }
 }
 
 function render() {
   list.innerHTML = "";
   TASKS.forEach((t, i) => {
     const li = document.createElement("li");
-    li.className = "item";
-    li.draggable = true;
+    li.className = "item" + (t.done ? " done" : "");
     li.dataset.index = String(i);
-    li.innerHTML = '<span class="name"></span><span class="tag"></span>';
+    li.innerHTML = '<span class="handle" draggable="true" title="拖曳排序">⋮⋮</span><input class="check" type="checkbox" /><span class="name"></span><span class="tag"></span>';
+    const check = li.querySelector(".check");
+    check.checked = !!t.done;
     li.querySelector(".name").textContent = t.name;
     li.querySelector(".tag").textContent = t.tag || "";
+    check.addEventListener("change", () => {
+      TASKS[i].done = check.checked;
+      cacheWrite();
+      render();
+      scheduleAutoSave();
+    });
     list.appendChild(li);
   });
 }
@@ -129,41 +130,28 @@ async function loadCloud() {
     TASKS = normalize(data.tasks);
     cacheWrite();
     render();
-    setStatus("已從雲端載入。拖完會自動存。", "ok");
+    setStatus("已從雲端載入。勾選完成或拖曳後會自動存。", "ok");
   } catch (e) {
     const cached = cacheRead();
     if (cached && cached.length) {
-      TASKS = cached;
-      render();
+      TASKS = cached; render();
       setStatus("雲端讀取失敗，已用本機快取。", "bad");
     } else {
-      TASKS = DEFAULT_TASKS.map((t) => ({ ...t }));
-      render();
+      TASKS = DEFAULT_TASKS.map((t) => ({ ...t })); render();
       setStatus("雲端讀取失敗，顯示預設清單。", "bad");
     }
   }
 }
 
-async function saveCloud(opts) {
-  const immediate = !!(opts && opts.immediate);
-  if (saveTimer) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
-  }
-  // Cancel in-flight request so rapid drags only keep the latest
-  if (saveAbort) {
-    try { saveAbort.abort(); } catch (_) {}
-    saveAbort = null;
-  }
+async function saveCloud() {
+  if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+  if (saveAbort) { try { saveAbort.abort(); } catch (_) {} saveAbort = null; }
   const mySeq = ++saveSeq;
   setStatus("儲存中…");
   saveBtn.disabled = true;
   const controller = new AbortController();
   saveAbort = controller;
-  const payload = {
-    updatedAt: new Date().toISOString(),
-    tasks: TASKS
-  };
+  const payload = { updatedAt: new Date().toISOString(), tasks: TASKS };
   cacheWrite();
   try {
     const res = await fetch(CLOUD_URL, {
@@ -172,10 +160,8 @@ async function saveCloud(opts) {
       body: JSON.stringify(payload),
       signal: controller.signal
     });
-    if (mySeq !== saveSeq) return; // superseded
-    if (!res.ok && res.status !== 200 && res.status !== 204) {
-      throw new Error("HTTP " + res.status);
-    }
+    if (mySeq !== saveSeq) return;
+    if (!res.ok && res.status !== 200 && res.status !== 204) throw new Error("HTTP " + res.status);
     setStatus("已自動存雲端", "ok");
   } catch (e) {
     if (e && e.name === "AbortError") return;
@@ -192,15 +178,14 @@ async function saveCloud(opts) {
 function scheduleAutoSave() {
   setStatus("儲存中…");
   if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    saveTimer = null;
-    saveCloud({ immediate: true });
-  }, AUTO_SAVE_MS);
+  saveTimer = setTimeout(() => { saveTimer = null; saveCloud(); }, AUTO_SAVE_MS);
 }
 
 let dragIndex = null;
 list.addEventListener("dragstart", (e) => {
-  const li = e.target.closest("li.item");
+  const handle = e.target.closest(".handle");
+  if (!handle) { e.preventDefault(); return; }
+  const li = handle.closest("li.item");
   if (!li) return;
   dragIndex = Number(li.dataset.index);
   li.classList.add("dragging");
@@ -232,9 +217,8 @@ list.addEventListener("drop", (e) => {
   scheduleAutoSave();
 });
 
-document.getElementById("saveBtn").addEventListener("click", () => saveCloud({ immediate: true }));
+document.getElementById("saveBtn").addEventListener("click", saveCloud);
 document.getElementById("reloadBtn").addEventListener("click", loadCloud);
-
 loadCloud();
 </script>
 </body>

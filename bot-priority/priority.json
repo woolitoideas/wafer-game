@@ -1,27 +1,32 @@
 {
-  "updatedAt": "2026-09-23T15:51:00+08:00",
+  "updatedAt": "2026-09-23T16:05:00+08:00",
   "cloud": "https://crudcrud.com/api/3fe8676481e24db5a0ff6c1e33ae43fa/priority/6ab37f6a3d1b1003e88ec8e8",
   "autoSaveMs": 120,
   "tasks": [
     {
+      "name": "公告改名",
+      "tag": "工作",
+      "done": false
+    },
+    {
       "name": "跟 Tyson 聊一下",
-      "tag": "工作"
+      "tag": "工作",
+      "done": false
     },
     {
       "name": "回覆芳瑜",
-      "tag": "工作"
+      "tag": "工作",
+      "done": false
     },
     {
       "name": "開桃美館群組",
-      "tag": "工作"
+      "tag": "工作",
+      "done": false
     },
     {
       "name": "Follow 綠色證券",
-      "tag": "工作"
-    },
-    {
-      "name": "公告改名",
-      "tag": "工作"
+      "tag": "工作",
+      "done": false
     }
   ]
 }
