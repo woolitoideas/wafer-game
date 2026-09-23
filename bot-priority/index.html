@@ -14,9 +14,11 @@
   main { max-width:560px; margin:0 auto; padding:24px 16px 48px; }
   h1 { font-size:1.25rem; margin:0 0 4px; }
   .hint { color:var(--muted); font-size:0.9rem; margin:0 0 16px; line-height:1.55; }
-  .status { font-size:0.85rem; margin:0 0 16px; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--card); color:var(--muted); }
+  .status { font-size:0.85rem; margin:0 0 16px; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--card); color:var(--muted); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
   .status.ok { color:var(--ok); }
   .status.bad { color:var(--bad); }
+  .status .msg { flex:1; min-width:12rem; }
+  .status button.retry { appearance:none; border:1px solid currentColor; background:transparent; color:inherit; border-radius:8px; padding:6px 10px; font-size:0.8rem; font-weight:600; cursor:pointer; }
   ol#list { list-style:none; padding:0; margin:0 0 16px; display:flex; flex-direction:column; gap:8px; counter-reset:item; }
   li.item { counter-increment:item; display:flex; align-items:center; gap:12px; background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 16px; cursor:grab; user-select:none; touch-action:none; }
   li.item:active { cursor:grabbing; }
@@ -25,18 +27,15 @@
   li.item::before { content:counter(item); width:1.5rem; height:1.5rem; border-radius:999px; background:var(--border); display:grid; place-items:center; font-size:0.8rem; font-weight:600; flex-shrink:0; }
   .tag { margin-left:auto; font-size:0.75rem; color:var(--muted); }
   .actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
-  button { appearance:none; border:0; border-radius:10px; padding:12px 16px; font-size:0.95rem; font-weight:600; cursor:pointer; }
-  button.primary { background:var(--accent); color:#fff; }
-  button.primary:disabled { opacity:0.6; cursor:wait; }
-  button.ghost { background:transparent; color:var(--text); border:1px solid var(--border); }
+  button.ghost { appearance:none; border:1px solid var(--border); background:transparent; color:var(--text); border-radius:10px; padding:12px 16px; font-size:0.95rem; font-weight:600; cursor:pointer; }
   .note { font-size:0.8rem; color:var(--muted); width:100%; margin-top:4px; }
 </style>
 </head>
 <body>
 <main>
   <h1>優先表</h1>
-  <p class="hint">拖曳改順序後會自動存到雲端（約 0.4 秒）。換裝置開同一頁即可看到最新順序。本機僅作離線快取。</p>
-  <div class="status" id="status">載入雲端中…</div>
+  <p class="hint">拖曳改順序後會立刻自動存到雲端。換裝置開同一頁即可看到最新順序。</p>
+  <div class="status" id="status"><span class="msg">載入雲端中…</span></div>
   <ol id="list"></ol>
   <div class="actions">
     <button type="button" class="ghost" id="reloadBtn">重新載入雲端</button>
@@ -47,7 +46,7 @@
 <script>
 const CLOUD_URL = "https://crudcrud.com/api/3fe8676481e24db5a0ff6c1e33ae43fa/priority/6ab37f6a3d1b1003e88ec8e8";
 const CACHE_KEY = "grok-priority-board-cloud-v1";
-const AUTO_SAVE_MS = 400;
+const AUTO_SAVE_MS = 120;
 const DEFAULT_TASKS = [
   { name: "跟 Tyson 聊一下", tag: "工作" },
   { name: "回覆芳瑜", tag: "工作" },
@@ -58,17 +57,29 @@ const DEFAULT_TASKS = [
 
 let TASKS = DEFAULT_TASKS.map((t) => ({ ...t }));
 let saveTimer = null;
-let saving = false;
-let pendingAfterSave = false;
+let saveAbort = null;
+let saveSeq = 0;
 
 const list = document.getElementById("list");
 const statusEl = document.getElementById("status");
 const saveBtn = document.getElementById("saveBtn");
 
-function setStatus(msg, kind) {
-  statusEl.textContent = msg;
+function setStatus(msg, kind, withRetry) {
   statusEl.classList.remove("ok", "bad");
   if (kind) statusEl.classList.add(kind);
+  statusEl.innerHTML = "";
+  const span = document.createElement("span");
+  span.className = "msg";
+  span.textContent = msg;
+  statusEl.appendChild(span);
+  if (withRetry) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "retry";
+    btn.textContent = "重試儲存";
+    btn.addEventListener("click", () => saveCloud({ immediate: true }));
+    statusEl.appendChild(btn);
+  }
 }
 
 function normalize(arr) {
@@ -118,13 +129,13 @@ async function loadCloud() {
     TASKS = normalize(data.tasks);
     cacheWrite();
     render();
-    setStatus("已從雲端載入" + (data.updatedAt ? "（" + data.updatedAt + "）" : "") + "。拖完會自動存雲端。", "ok");
+    setStatus("已從雲端載入。拖完會自動存。", "ok");
   } catch (e) {
     const cached = cacheRead();
     if (cached && cached.length) {
       TASKS = cached;
       render();
-      setStatus("雲端讀取失敗，已用本機快取。連線後請重新載入。", "bad");
+      setStatus("雲端讀取失敗，已用本機快取。", "bad");
     } else {
       TASKS = DEFAULT_TASKS.map((t) => ({ ...t }));
       render();
@@ -134,49 +145,56 @@ async function loadCloud() {
 }
 
 async function saveCloud(opts) {
-  const quiet = opts && opts.quiet;
-  if (saving) {
-    pendingAfterSave = true;
-    return;
+  const immediate = !!(opts && opts.immediate);
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
   }
-  saving = true;
+  // Cancel in-flight request so rapid drags only keep the latest
+  if (saveAbort) {
+    try { saveAbort.abort(); } catch (_) {}
+    saveAbort = null;
+  }
+  const mySeq = ++saveSeq;
+  setStatus("儲存中…");
   saveBtn.disabled = true;
-  if (!quiet) setStatus("正在寫入雲端…");
-  else setStatus("正在自動存雲端…");
+  const controller = new AbortController();
+  saveAbort = controller;
   const payload = {
     updatedAt: new Date().toISOString(),
     tasks: TASKS
   };
+  cacheWrite();
   try {
     const res = await fetch(CLOUD_URL, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      signal: controller.signal
     });
+    if (mySeq !== saveSeq) return; // superseded
     if (!res.ok && res.status !== 200 && res.status !== 204) {
       throw new Error("HTTP " + res.status);
     }
-    cacheWrite();
     setStatus("已自動存雲端", "ok");
   } catch (e) {
-    cacheWrite();
-    setStatus("雲端寫入失敗：" + (e && e.message ? e.message : e) + "。已暫存本機。", "bad");
+    if (e && e.name === "AbortError") return;
+    if (mySeq !== saveSeq) return;
+    setStatus("雲端寫入失敗：" + (e && e.message ? e.message : e), "bad", true);
   } finally {
-    saving = false;
-    saveBtn.disabled = false;
-    if (pendingAfterSave) {
-      pendingAfterSave = false;
-      scheduleAutoSave();
+    if (mySeq === saveSeq) {
+      saveBtn.disabled = false;
+      if (saveAbort === controller) saveAbort = null;
     }
   }
 }
 
 function scheduleAutoSave() {
+  setStatus("儲存中…");
   if (saveTimer) clearTimeout(saveTimer);
-  setStatus("順序已改，稍後自動存雲端…");
   saveTimer = setTimeout(() => {
     saveTimer = null;
-    saveCloud({ quiet: true });
+    saveCloud({ immediate: true });
   }, AUTO_SAVE_MS);
 }
 
@@ -214,13 +232,7 @@ list.addEventListener("drop", (e) => {
   scheduleAutoSave();
 });
 
-document.getElementById("saveBtn").addEventListener("click", () => {
-  if (saveTimer) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
-  }
-  saveCloud({ quiet: false });
-});
+document.getElementById("saveBtn").addEventListener("click", () => saveCloud({ immediate: true }));
 document.getElementById("reloadBtn").addEventListener("click", loadCloud);
 
 loadCloud();

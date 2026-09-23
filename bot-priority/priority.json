@@ -1,7 +1,7 @@
 {
-  "updatedAt": "2026-09-23T15:40:00+08:00",
+  "updatedAt": "2026-09-23T15:51:00+08:00",
   "cloud": "https://crudcrud.com/api/3fe8676481e24db5a0ff6c1e33ae43fa/priority/6ab37f6a3d1b1003e88ec8e8",
-  "autoSaveMs": 400,
+  "autoSaveMs": 120,
   "tasks": [
     {
       "name": "跟 Tyson 聊一下",
