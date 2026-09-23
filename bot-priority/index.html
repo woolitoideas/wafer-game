@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>優先表（雲端同步）</title>
+<title>優先表（雲端自動同步）</title>
 <style>
   :root { color-scheme: light dark; --bg:#0f1115; --card:#1a1e27; --text:#eef1f6; --muted:#9aa3b2; --accent:#6ea8fe; --border:#2a3140; --ok:#3ecf8e; --bad:#f87171; }
   @media (prefers-color-scheme: light) {
@@ -35,18 +35,19 @@
 <body>
 <main>
   <h1>優先表</h1>
-  <p class="hint">拖曳排序後按「儲存到雲端」即可寫入雲端。換裝置開啟同一頁會讀到最新順序（無需貼回聊天）。本機僅作離線快取。</p>
+  <p class="hint">拖曳改順序後會自動存到雲端（約 0.4 秒）。換裝置開同一頁即可看到最新順序。本機僅作離線快取。</p>
   <div class="status" id="status">載入雲端中…</div>
   <ol id="list"></ol>
   <div class="actions">
-    <button type="button" class="primary" id="saveBtn">儲存到雲端</button>
     <button type="button" class="ghost" id="reloadBtn">重新載入雲端</button>
+    <button type="button" class="ghost" id="saveBtn">立即儲存</button>
     <span class="note">雲端：受限 JSON API（非 GitHub PAT）。知道此頁網址的人可讀寫此看板。</span>
   </div>
 </main>
 <script>
 const CLOUD_URL = "https://crudcrud.com/api/3fe8676481e24db5a0ff6c1e33ae43fa/priority/6ab37f6a3d1b1003e88ec8e8";
 const CACHE_KEY = "grok-priority-board-cloud-v1";
+const AUTO_SAVE_MS = 400;
 const DEFAULT_TASKS = [
   { name: "跟 Tyson 聊一下", tag: "工作" },
   { name: "回覆芳瑜", tag: "工作" },
@@ -56,7 +57,9 @@ const DEFAULT_TASKS = [
 ];
 
 let TASKS = DEFAULT_TASKS.map((t) => ({ ...t }));
-let dirty = false;
+let saveTimer = null;
+let saving = false;
+let pendingAfterSave = false;
 
 const list = document.getElementById("list");
 const statusEl = document.getElementById("status");
@@ -113,16 +116,15 @@ async function loadCloud() {
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     TASKS = normalize(data.tasks);
-    dirty = false;
     cacheWrite();
     render();
-    setStatus("已從雲端載入" + (data.updatedAt ? "（" + data.updatedAt + "）" : "") + "。拖完記得按儲存。", "ok");
+    setStatus("已從雲端載入" + (data.updatedAt ? "（" + data.updatedAt + "）" : "") + "。拖完會自動存雲端。", "ok");
   } catch (e) {
     const cached = cacheRead();
     if (cached && cached.length) {
       TASKS = cached;
       render();
-      setStatus("雲端讀取失敗，已用本機快取。連線後請重新載入或再儲存。", "bad");
+      setStatus("雲端讀取失敗，已用本機快取。連線後請重新載入。", "bad");
     } else {
       TASKS = DEFAULT_TASKS.map((t) => ({ ...t }));
       render();
@@ -131,9 +133,16 @@ async function loadCloud() {
   }
 }
 
-async function saveCloud() {
+async function saveCloud(opts) {
+  const quiet = opts && opts.quiet;
+  if (saving) {
+    pendingAfterSave = true;
+    return;
+  }
+  saving = true;
   saveBtn.disabled = true;
-  setStatus("正在寫入雲端…");
+  if (!quiet) setStatus("正在寫入雲端…");
+  else setStatus("正在自動存雲端…");
   const payload = {
     updatedAt: new Date().toISOString(),
     tasks: TASKS
@@ -147,15 +156,28 @@ async function saveCloud() {
     if (!res.ok && res.status !== 200 && res.status !== 204) {
       throw new Error("HTTP " + res.status);
     }
-    dirty = false;
     cacheWrite();
-    setStatus("已儲存到雲端。換裝置開啟此頁即可看到新順序。", "ok");
+    setStatus("已自動存雲端", "ok");
   } catch (e) {
     cacheWrite();
     setStatus("雲端寫入失敗：" + (e && e.message ? e.message : e) + "。已暫存本機。", "bad");
   } finally {
+    saving = false;
     saveBtn.disabled = false;
+    if (pendingAfterSave) {
+      pendingAfterSave = false;
+      scheduleAutoSave();
+    }
   }
+}
+
+function scheduleAutoSave() {
+  if (saveTimer) clearTimeout(saveTimer);
+  setStatus("順序已改，稍後自動存雲端…");
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    saveCloud({ quiet: true });
+  }, AUTO_SAVE_MS);
 }
 
 let dragIndex = null;
@@ -187,13 +209,18 @@ list.addEventListener("drop", (e) => {
   if (to === dragIndex) return;
   const [moved] = TASKS.splice(dragIndex, 1);
   TASKS.splice(to, 0, moved);
-  dirty = true;
   cacheWrite();
   render();
-  setStatus("順序已改（本機）。按「儲存到雲端」後其他裝置才會同步。");
+  scheduleAutoSave();
 });
 
-document.getElementById("saveBtn").addEventListener("click", saveCloud);
+document.getElementById("saveBtn").addEventListener("click", () => {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  saveCloud({ quiet: false });
+});
 document.getElementById("reloadBtn").addEventListener("click", loadCloud);
 
 loadCloud();
